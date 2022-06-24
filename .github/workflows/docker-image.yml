@@ -2,8 +2,6 @@ name: Docker Image Deployment
 
 on:
   push:
-    branches:    
-      - main
     tags:        
       - v2
       - v1.*
