@@ -1,8 +1,9 @@
 name: Docker Image Deployment
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+    - v*
 
 jobs:
   docker:
@@ -26,4 +27,4 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           push: true
-          tags: oitstack/damocles:latest
+          tags: oitstack/damocles:${{ github.ref }}
