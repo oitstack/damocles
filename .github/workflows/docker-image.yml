@@ -3,7 +3,7 @@ name: Docker Image Deployment
 on:
   push:
     tags:        
-      - v1.**
+      - v*
 
 jobs:
   docker:
@@ -27,4 +27,4 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           push: true
-          tags: oitstack/damocles:${{ github.ref }}
+          tags: oitstack/damocles:${{ github.ref.tags[0] }}
