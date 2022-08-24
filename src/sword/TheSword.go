@@ -6,7 +6,6 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
-	"gopkg.in/matryer/try.v1"
 	"log"
 	"math/big"
 	"net"
@@ -67,6 +66,7 @@ func (theSword *TheSword) welcomeToDamocles(reached chan<- bool, timeout big.Int
 			panic(err)
 		} else {
 			go theSword.ensureAlive(once, reached, conn, wg)
+
 		}
 	}
 }
@@ -76,8 +76,10 @@ func (theSword TheSword) ensureAlive(once sync.Once, reached chan<- bool, conn n
 	once.Do(func() {
 		reached <- true
 	})
+
 	reader := bufio.NewReader(conn)
 	for {
+		conn.SetReadDeadline(time.Now().Add(20 * time.Second))
 		if command, err := reader.ReadString('\n'); err != nil {
 			log.Printf("received an error command %s", err)
 			break
