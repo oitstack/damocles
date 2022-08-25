@@ -93,6 +93,12 @@ func (theSword TheSword) ensureAlive(once sync.Once, reached chan<- bool, conn n
 
 func (theSword *TheSword) hit() {
 
+	deletedContainers := make(map[string]bool)
+	pruneContainers := make(map[string]bool)
+	deletedNetworks := make(map[string]bool)
+	deletedVolumes := make(map[string]bool)
+	deletedImages := make(map[string]bool)
+
 	args := filters.NewArgs()
 
 	args.Add("label", theSword.Target)
@@ -104,12 +110,19 @@ func (theSword *TheSword) hit() {
 	} else {
 		for _, container := range containers {
 			theSword.Cli.ContainerRemove(context.Background(), container.ID, types.ContainerRemoveOptions{RemoveVolumes: true, Force: true})
+			deletedContainers[container.ID] = true
 			log.Printf("container killed: %s", container.ID)
 		}
 	}
 
+	pruneFilters := filters.NewArgs()
+	pruneFilters.Add("label", "theSword=true")
 	try.Do(func(attempt int) (bool, error) {
-		_, err := theSword.Cli.NetworksPrune(context.Background(), args)
+		containerPruneReport, err := theSword.Cli.ContainersPrune(context.Background(), pruneFilters)
+		for _, id := range containerPruneReport.ContainersDeleted {
+			pruneContainers[id] = true
+			log.Printf("container pruned: %s", id)
+		}
 
 		shouldRetry := attempt < 10
 		if err != nil && shouldRetry {
@@ -120,8 +133,23 @@ func (theSword *TheSword) hit() {
 	})
 
 	try.Do(func(attempt int) (bool, error) {
-		_, err := theSword.Cli.VolumesPrune(context.Background(), args)
+		networksPruneReport, err := theSword.Cli.NetworksPrune(context.Background(), args)
+		for _, networkID := range networksPruneReport.NetworksDeleted {
+			deletedNetworks[networkID] = true
+		}
+		shouldRetry := attempt < 10
+		if err != nil && shouldRetry {
+			log.Printf("Network pruning has failed, retrying(%d/%d). The error was: %v", attempt, 10, err)
+			time.Sleep(1 * time.Second)
+		}
+		return shouldRetry, err
+	})
 
+	try.Do(func(attempt int) (bool, error) {
+		volumesPruneReport, err := theSword.Cli.VolumesPrune(context.Background(), args)
+		for _, volumeName := range volumesPruneReport.VolumesDeleted {
+			deletedVolumes[volumeName] = true
+		}
 		shouldRetry := attempt < 10
 		if err != nil && shouldRetry {
 			log.Printf("Volumes pruning has failed, retrying(%d/%d). The error was: %v", attempt, 10, err)
@@ -130,15 +158,19 @@ func (theSword *TheSword) hit() {
 		return shouldRetry, err
 	})
 
-	try.Do(func(attempt int) (bool, error) {
-		args.Add("label", "theSword=true")
-		_, err := theSword.Cli.ImagesPrune(context.Background(), args)
-
-		shouldRetry := attempt < 10
-		if err != nil && shouldRetry {
-			log.Printf("Images pruning has failed, retrying(%d/%d). The error was: %v", attempt, 10, err)
-			time.Sleep(1 * time.Second)
-		}
-		return shouldRetry, err
-	})
+	//imagePrunedFilters := filters.NewArgs()
+	//imagePrunedFilters.Add("dangling", "true")
+	//try.Do(func(attempt int) (bool, error) {
+	//	imagesPruneReport, err := theSword.Cli.ImagesPrune(context.Background(), imagePrunedFilters)
+	//	for _, image := range imagesPruneReport.ImagesDeleted {
+	//		deletedImages[image.Deleted] = true
+	//	}
+	//	shouldRetry := attempt < 10
+	//	if err != nil && shouldRetry {
+	//		log.Printf("Images pruning has failed, retrying(%d/%d). The error was: %v", attempt, 10, err)
+	//		time.Sleep(1 * time.Second)
+	//	}
+	//	return shouldRetry, err
+	//})
+	log.Printf("Removed %d container(s), %d network(s), %d volume(s) %d image(s) , Pruned %d container(s)", len(deletedContainers), len(deletedNetworks), len(deletedVolumes), len(deletedImages), len(pruneContainers))
 }
